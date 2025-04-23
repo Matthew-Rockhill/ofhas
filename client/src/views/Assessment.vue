@@ -37,11 +37,11 @@
               <span>Needs Improvement</span>
               <span>Excellent</span>
             </div>
-            <div class="flex space-x-4">
-              <template v-for="rating in 5" :key="rating">
+            <div class="flex space-x-1">
+              <template v-for="rating in 10" :key="rating">
                 <button 
                   @click="setAnswer(currentQuestion.id, rating)"
-                  class="flex-1 py-3 rounded-md text-center"
+                  class="flex-1 py-2 rounded-md text-sm text-center"
                   :class="[
                     answers[currentQuestion.id] === rating 
                       ? 'bg-blue-600 text-white' 

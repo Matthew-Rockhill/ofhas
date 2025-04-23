@@ -65,7 +65,7 @@
     </div>
 
     <!-- Call to Action -->
-    <div class="py-16 text-center">
+    <div class="py-24 text-center">
       <h2 class="text-3xl font-bold mb-6 text-blue-900">Ready to improve your financial health?</h2>
       <p class="text-lg mb-8 max-w-2xl mx-auto text-gray-700">
         Take our assessment today and receive a personalized report with actionable recommendations.
@@ -89,11 +89,11 @@ export default {
           description: 'Establish your mission, vision, forecasts, and funding strategy for sustainable growth.'
         },
         {
-          title: 'Break Even and Margin',
+          title: 'Break Even',
           description: 'Understand product costing, mark-up, and the volume needed to cover overheads.'
         },
         {
-          title: 'Blueprint - Systems and Procedures',
+          title: 'Blueprint',
           description: 'Create robust processes and adopt appropriate systems to manage finances effectively.'
         },
         {

@@ -166,7 +166,7 @@
       </div>
       
       <!-- CTA Section -->
-      <div class="py-16 text-center bg-gray-50">
+      <div class="py-24 text-center bg-gray-50">
         <div class="max-w-4xl mx-auto px-6">
           <h2 class="text-3xl font-bold mb-6 text-blue-900">Ready to strengthen your financial health?</h2>
           <p class="text-lg mb-8 max-w-2xl mx-auto text-gray-700">

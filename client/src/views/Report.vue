@@ -62,7 +62,7 @@
                 <h3 class="font-medium text-gray-900">{{ pillar.name }}</h3>
                 <div class="flex items-center">
                   <span class="font-semibold text-lg mr-2">{{ pillar.score }}</span>
-                  <span class="text-sm text-gray-500">/5</span>
+                  <span class="text-sm text-gray-500">/10</span>
                 </div>
               </div>
               <div class="p-4">
@@ -207,7 +207,7 @@ export default {
                 display: true
               },
               suggestedMin: 0,
-              suggestedMax: 5
+              suggestedMax: 10
             }
           },
           plugins: {
@@ -231,7 +231,7 @@ export default {
         data: {
           labels: ['Score', 'Remaining'],
           datasets: [{
-            data: [score, 5 - score],
+            data: [score, 10 - score],
             backgroundColor: [
               'rgba(59, 130, 246, 0.8)',
               'rgba(229, 231, 235, 0.5)'
@@ -289,10 +289,10 @@ export default {
     const scoreFeedback = computed(() => {
       const score = parseFloat(overallScore.value)
       
-      if (score >= 4.5) return "Excellent! Your organization has very strong financial health practices across all pillars."
-      if (score >= 3.5) return "Good. Your organization has solid financial health with some areas for improvement."
-      if (score >= 2.5) return "Average. There are several important areas that need attention to improve your overall financial health."
-      if (score >= 1.5) return "Below average. Your organization needs significant improvements in financial management."
+      if (score >= 9) return "Excellent! Your organization has very strong financial health practices across all pillars."
+      if (score >= 7) return "Good. Your organization has solid financial health with some areas for improvement."
+      if (score >= 5) return "Average. There are several important areas that need attention to improve your overall financial health."
+      if (score >= 3) return "Below average. Your organization needs significant improvements in financial management."
       return "Critical. Immediate attention is needed to address fundamental financial health issues."
     })
     
