@@ -1,5 +1,8 @@
 <template>
   <div class="min-h-screen bg-gray-50 flex flex-col">
+    <!-- Add the AuthHandler component at the top of your template -->
+    <AuthHandler />
+    
     <header class="bg-white shadow">
       <div class="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
         <router-link to="/" class="text-2xl font-bold text-blue-600">OFHAS</router-link>
@@ -8,7 +11,6 @@
             <li><router-link to="/" class="text-gray-700 hover:text-blue-600">Home</router-link></li>
             <li><router-link to="/about" class="text-gray-700 hover:text-blue-600">About</router-link></li>
             <li><router-link to="/assessment" class="text-gray-700 hover:text-blue-600">Assessment</router-link></li>
-
           </ul>
         </nav>
       </div>
@@ -39,7 +41,14 @@
 </template>
 
 <script>
+// Import the AuthHandler component
+import AuthHandler from './components/AuthHandler.vue'
+
 export default {
-  name: 'App'
+  name: 'App',
+  // Register the component
+  components: {
+    AuthHandler
+  }
 }
 </script>
