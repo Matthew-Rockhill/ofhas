@@ -11,48 +11,47 @@
   <script>
   import supabase from '../supabaseClient'
   
-  export default {
-    name: 'AuthCallback',
-    async mounted() {
-      try {
-        // Get the URL hash
-        const hash = window.location.hash
-  
-        if (hash && hash.includes('access_token')) {
-          // The hash includes tokens, process the sign-in
-          const { data, error } = await supabase.auth.getSession()
-          
-          if (error) {
-            console.error('Error processing auth callback:', error)
-            this.$router.push('/login?error=auth_callback_failed')
-          } else if (data?.session) {
-            // Successfully authenticated
-            console.log('Authentication successful')
-            this.$router.push('/assessment')
-          } else {
-            // No valid session
-            this.$router.push('/login?error=no_session')
-          }
+export default {
+  name: 'AuthCallback',
+  async mounted() {
+    try {
+      // Get the URL hash and query parameters
+      const hash = window.location.hash
+      const query = new URLSearchParams(window.location.search)
+      const type = query.get('type')
+      
+      console.log("Auth callback details:", { hash, query: query.toString(), type })
+
+      if (hash && hash.includes('access_token')) {
+        // Handle token in hash (login, signup)
+        const { data, error } = await supabase.auth.getSession()
+        
+        if (error) {
+          console.error('Error processing auth callback:', error)
+          this.$router.push('/login?error=auth_callback_failed')
+        } else if (data?.session) {
+          // Successfully authenticated
+          console.log('Authentication successful')
+          this.$router.push('/assessment')
         } else {
-          // Check if this is a password reset or email confirmation
-          const params = new URLSearchParams(window.location.search)
-          const type = params.get('type')
-          
-          if (type === 'recovery') {
-            // Password reset flow
-            this.$router.push('/reset-password')
-          } else if (type === 'signup') {
-            // Email confirmation was successful
-            this.$router.push('/login?message=email_confirmed')
-          } else {
-            // Fallback to login
-            this.$router.push('/login')
-          }
+          // No valid session
+          this.$router.push('/login?error=no_session')
         }
-      } catch (error) {
-        console.error('Unexpected error in auth callback:', error)
-        this.$router.push('/login?error=unexpected')
+      } else if (type === 'recovery') {
+        // Password reset flow
+        this.$router.push('/reset-password')
+      } else if (type === 'signup' || type === 'magiclink') {
+        // Email confirmation was successful
+        localStorage.setItem('emailConfirmed', 'true')
+        this.$router.push('/login?message=email_confirmed')
+      } else {
+        // Fallback to login
+        this.$router.push('/login')
       }
+    } catch (error) {
+      console.error('Unexpected error in auth callback:', error)
+      this.$router.push('/login?error=unexpected')
     }
   }
+}
   </script>
