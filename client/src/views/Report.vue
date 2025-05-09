@@ -622,7 +622,15 @@ export default {
         await PdfService.generateAndDownloadPdf(pdfData);
       } catch (error) {
         console.error('Error generating PDF:', error);
-        alert('There was an error generating your PDF. Please try again later.');
+        // Check if it's a network/server error (like a 500 status)
+        if (error.response && error.response.status === 500) {
+          alert('The PDF service is currently unavailable. Please try again later or contact support if the issue persists.');
+        } else if (error.message && error.message.includes('Failed to generate PDF')) {
+          alert('There was a problem creating your PDF. Our team has been notified.');
+          // In a real app, you might want to log this error to a monitoring service
+        } else {
+          alert('There was an error generating your PDF. Please try again later.');
+        }
       } finally {
         pdfLoading.value = false;
       }
