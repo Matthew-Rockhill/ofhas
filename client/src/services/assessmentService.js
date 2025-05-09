@@ -215,3 +215,39 @@ export const saveCompletedAssessment = async (assessment) => {
     return { success: true, local: true, error: error.message }
   }
 }
+
+// Get the latest completed assessment for a user from Supabase
+export const getCompletedAssessmentFromSupabase = async (userId) => {
+  if (!userId || !supabase) return null;
+  
+  try {
+    const { data, error } = await supabase
+      .from('assessments')
+      .select('*')
+      .eq('user_id', userId)
+      .order('completed_at', { ascending: false })
+      .limit(1);
+    
+    if (error) {
+      console.error('Error loading assessment from Supabase:', error);
+      return null;
+    }
+    
+    if (data.length === 0) {
+      console.warn('No assessments found in Supabase for user:', userId);
+      return null;
+    }
+    
+    console.log('Loaded assessment from Supabase:', data[0]);
+    
+    // Return the assessment data
+    return {
+      answers: data[0].answers || {},
+      questions: data[0].questions || [],
+      completed_at: data[0].completed_at
+    };
+  } catch (error) {
+    console.error('Error in getCompletedAssessmentFromSupabase:', error);
+    return null;
+  }
+};
