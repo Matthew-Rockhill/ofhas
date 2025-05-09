@@ -4,6 +4,8 @@ const bodyParser = require('body-parser')
 const PDFDocument = require('pdfkit')
 const { createClient } = require('@supabase/supabase-js')
 const serverless = require('serverless-http')
+const crypto = require('crypto') // Add this for token generation
+const nodemailer = require('nodemailer') // Add this for email sending
 
 require('dotenv').config()
 
@@ -354,7 +356,7 @@ app.get('/api/progress', verifyAuth, async (req, res) => {
 // PDF Report Generation
 // ==============================================
 
-// GET /api/pdf/:assessmentId – Generate a PDF report for a specific assessment
+// Existing endpoint to generate PDF from assessment ID
 app.get('/api/pdf/:assessmentId', verifyAuth, async (req, res) => {
   try {
     const assessmentId = req.params.assessmentId
@@ -568,6 +570,361 @@ app.get('/api/pdf/:assessmentId', verifyAuth, async (req, res) => {
   }
 })
 
+// NEW ENDPOINT: Generate a PDF report from assessment data
+app.post('/api/pdf', verifyAuth, async (req, res) => {
+  try {
+    const { pillarResults, overallScore, recommendedActions } = req.body
+    
+    // Validate required data
+    if (!pillarResults || !overallScore) {
+      return res.status(400).json({ 
+        error: 'Missing required fields: pillarResults and overallScore are required' 
+      })
+    }
+    
+    // Generate PDF
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Disposition', 'attachment; filename="financial_health_report.pdf"')
+    
+    const doc = new PDFDocument({ size: 'A4', margin: 50 })
+    doc.pipe(res)
+    
+    // Use modernized colors 
+    const primaryColor = '#2563eb' // blue-600
+    const secondaryColor = '#1e293b' // slate-800
+    const accentColor = '#475569' // slate-600
+    
+    // Add logo/header
+    doc.fontSize(24).fillColor(primaryColor).text('Financial Health Assessment Report', { align: 'center' })
+    doc.moveDown()
+    
+    // Add date info
+    doc.fontSize(12).fillColor(accentColor)
+      .text(`Generated on: ${new Date().toLocaleDateString()}`, { align: 'right' })
+    
+    // Fetch user profile information if available
+    try {
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('first_name, last_name, organization_name')
+        .eq('id', req.user.id)
+        .single()
+      
+      if (profileData) {
+        doc.moveDown()
+          .text(`Organization: ${profileData.organization_name || 'Not specified'}`, { align: 'left' })
+          .text(`Prepared for: ${profileData.first_name} ${profileData.last_name}`, { align: 'left' })
+      }
+    } catch (profileError) {
+      console.error('Error fetching profile for PDF:', profileError)
+      // Continue without profile info if not available
+    }
+    
+    doc.moveDown(2)
+    
+    // Overall Score Section
+    doc.fontSize(16).fillColor(primaryColor).text('Executive Summary', { underline: true })
+    doc.moveDown()
+    
+    doc.fontSize(12).fillColor(secondaryColor)
+      .text(`Overall Score: ${overallScore}/10`, { align: 'left' })
+    
+    // Add score feedback
+    let scoreFeedback = ''
+    const score = parseFloat(overallScore)
+    
+    if (score >= 8) {
+      scoreFeedback = "Excellent! Your organization has very strong financial health practices across all pillars."
+    } else if (score >= 6) {
+      scoreFeedback = "Good. Your organization has solid financial health with some areas for improvement."
+    } else if (score >= 4) {
+      scoreFeedback = "Average. There are several important areas that need attention to improve your overall financial health."
+    } else if (score >= 2) {
+      scoreFeedback = "Below average. Your organization needs significant improvements in financial management."
+    } else {
+      scoreFeedback = "Critical. Immediate attention is needed to address fundamental financial health issues."
+    }
+    
+    doc.fontSize(12).fillColor(accentColor)
+      .text(scoreFeedback, { align: 'left' })
+    
+    doc.moveDown(2)
+    
+    // Pillar breakdown 
+    doc.fontSize(16).fillColor(primaryColor).text('Pillar Breakdown', { underline: true })
+    doc.moveDown()
+    
+    // Write scores for each pillar
+    pillarResults.forEach((pillar) => {
+      doc.fontSize(14).fillColor(secondaryColor).text(pillar.name, { underline: true })
+      doc.fontSize(12).fillColor(accentColor).text(`Average Score: ${pillar.score}/10`)
+      doc.moveDown(0.5)
+      
+      // Add pillar-specific feedback
+      let pillarFeedback = ''
+      if (pillar.score >= 8) {
+        pillarFeedback = `Your organization demonstrates excellent practices in ${pillar.name.toLowerCase()}.`
+      } else if (pillar.score >= 6) {
+        pillarFeedback = `Your organization has a strong foundation in ${pillar.name.toLowerCase()}, with some opportunities for refinement.`
+      } else if (pillar.score >= 4) {
+        pillarFeedback = `Your organization has a decent foundation in ${pillar.name.toLowerCase()}, but there's significant room for improvement.`
+      } else if (pillar.score >= 2) {
+        pillarFeedback = `Your organization needs to strengthen its approach to ${pillar.name.toLowerCase()}.`
+      } else {
+        pillarFeedback = `Your organization requires significant improvement in ${pillar.name.toLowerCase()}. This should be a priority area.`
+      }
+      
+      doc.fontSize(12).fillColor(accentColor).text(pillarFeedback)
+      doc.moveDown(0.5)
+      
+      // Areas to focus on
+      if (pillar.focusAreas && pillar.focusAreas.length > 0) {
+        doc.fontSize(10).fillColor(secondaryColor).text('Areas to Focus On:')
+        pillar.focusAreas.forEach(area => {
+          doc.fontSize(9).fillColor(accentColor)
+            .text(`• ${area}`)
+        })
+      }
+      
+      doc.moveDown()
+    })
+    
+    doc.moveDown(2)
+    
+    // Recommendations section
+    doc.fontSize(16).fillColor(primaryColor).text('Recommended Actions', { underline: true })
+    doc.moveDown()
+    
+    // Add recommendations
+    if (recommendedActions && recommendedActions.length > 0) {
+      recommendedActions.forEach((action, index) => {
+        doc.fontSize(14).fillColor(secondaryColor).text(`${index + 1}. ${action.title}`, { underline: false })
+        doc.fontSize(10).fillColor(accentColor).text(action.description)
+        doc.moveDown()
+      })
+    }
+    
+    // Footer
+    const pageCount = doc.bufferedPageRange().count
+    for (let i = 0; i < pageCount; i++) {
+      doc.switchToPage(i)
+      
+      // Add page number
+      doc.fontSize(8).fillColor(accentColor)
+        .text(
+          `Page ${i + 1} of ${pageCount}`, 
+          50, 
+          doc.page.height - 50, 
+          { align: 'center' }
+        )
+        
+      // Add footer
+      doc.fontSize(8).fillColor(accentColor)
+        .text(
+          'Organizational Financial Health Assessment System (OFHAS)',
+          50,
+          doc.page.height - 30,
+          { align: 'center' }
+        )
+    }
+    
+    doc.end()
+  } catch (error) {
+    console.error('Error generating PDF from data:', error)
+    res.status(500).json({ error: 'Failed to generate PDF report', details: error.message })
+  }
+})
+
+// ==============================================
+// Report Sharing Features
+// ==============================================
+
+// POST /api/share/email - Share report via email
+app.post('/api/share/email', verifyAuth, async (req, res) => {
+  try {
+    const { assessmentData, recipientEmail, senderName, message, includePdf } = req.body
+    
+    // Validate inputs
+    if (!assessmentData || !recipientEmail) {
+      return res.status(400).json({ error: 'Missing required data: assessmentData or recipientEmail' })
+    }
+    
+    // Create email transporter
+    // For production, you'd use a real SMTP server
+    // For development/testing, you can use services like Ethereal (https://ethereal.email/)
+    // or configure your own SMTP settings
+    const transporter = nodemailer.createTransport({
+      host: process.env.EMAIL_HOST || 'smtp.example.com',
+      port: process.env.EMAIL_PORT || 587,
+      secure: process.env.EMAIL_SECURE === 'true',
+      auth: {
+        user: process.env.EMAIL_USER || 'user@example.com',
+        pass: process.env.EMAIL_PASSWORD || 'password'
+      }
+    })
+    
+    // Get user profile data for the sender
+    const user = req.user
+    const { data: profileData } = await supabase
+      .from('profiles')
+      .select('first_name, last_name, organization_name')
+      .eq('id', user.id)
+      .single()
+    
+    const displayName = senderName || 
+      (profileData ? `${profileData.first_name} ${profileData.last_name}` : 'A colleague')
+    
+    const organization = profileData?.organization_name || 'their organization'
+    
+    // Prepare email content
+    const emailContent = `
+      <h2>Financial Health Assessment Results</h2>
+      <p>${displayName} has shared the results of their financial health assessment with you.</p>
+      
+      ${message ? `<p>Message from ${displayName}:</p><blockquote>${message}</blockquote>` : ''}
+      
+      <h3>Summary</h3>
+      <p>Overall Score: <strong>${assessmentData.overallScore}/10</strong></p>
+      
+      <h3>Pillar Scores</h3>
+      <ul>
+        ${assessmentData.pillarResults.map(pillar => `
+          <li><strong>${pillar.name}:</strong> ${pillar.score}/10</li>
+        `).join('')}
+      </ul>
+      
+      <p>For a complete breakdown of the results, ${includePdf ? 'see the attached PDF report.' : 
+        'ask the sender to provide you with the detailed report.'}</p>
+      
+      <hr>
+      <p>This email was sent from the Organizational Financial Health Assessment System (OFHAS).</p>
+    `
+    
+    // Email options
+    const mailOptions = {
+      from: process.env.EMAIL_FROM || '"OFHAS" <noreply@ofhas.com>',
+      to: recipientEmail,
+      subject: `${displayName} has shared a Financial Health Assessment with you`,
+      html: emailContent
+    }
+    
+    // If includePdf is true, generate and attach the PDF
+    if (includePdf) {
+      // Create a PDF in memory
+      const pdfBuffer = await generatePdfBuffer(assessmentData)
+      
+      // Attach the PDF
+      mailOptions.attachments = [
+        {
+          filename: 'financial-health-report.pdf',
+          content: pdfBuffer
+        }
+      ]
+    }
+    
+    // Send the email
+    const info = await transporter.sendMail(mailOptions)
+    
+    // Store sharing record in database
+    await supabase
+      .from('shared_reports')
+      .insert({
+        user_id: user.id,
+        recipient_email: recipientEmail,
+        shared_at: new Date().toISOString(),
+        included_pdf: includePdf
+      })
+    
+    res.json({ 
+      success: true, 
+      message: 'Report shared successfully',
+      messageId: info.messageId
+    })
+  } catch (error) {
+    console.error('Error sharing report via email:', error)
+    res.status(500).json({ error: 'Failed to share report', details: error.message })
+  }
+})
+
+// POST /api/share/link - Generate shareable link
+app.post('/api/share/link', verifyAuth, async (req, res) => {
+  try {
+    const { assessmentData } = req.body
+    const user = req.user
+    
+    // Generate a unique token for this share
+    const shareToken = crypto.randomBytes(32).toString('hex')
+    
+    // Store the assessment data with the token
+    const { error } = await supabase
+      .from('shared_links')
+      .insert({
+        token: shareToken,
+        user_id: user.id,
+        assessment_data: assessmentData,
+        created_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + (30 * 24 * 60 * 60 * 1000)).toISOString() // 30 days expiry
+      })
+    
+    if (error) {
+      throw error
+    }
+    
+    // Generate shareable URL
+    const baseUrl = process.env.NODE_ENV === 'production'
+      ? (process.env.PUBLIC_URL || 'https://ofhas.vercel.app')
+      : 'http://localhost:5173'
+    
+    const shareUrl = `${baseUrl}/shared-report/${shareToken}`
+    
+    res.json({
+      success: true,
+      shareUrl,
+      expiresIn: '30 days'
+    })
+  } catch (error) {
+    console.error('Error generating shareable link:', error)
+    res.status(500).json({ error: 'Failed to generate shareable link', details: error.message })
+  }
+})
+
+// GET /api/shared/:token - Retrieve shared report data (public endpoint, no auth required)
+app.get('/api/shared/:token', async (req, res) => {
+  try {
+    const token = req.params.token
+    
+    // Fetch the shared report data
+    const { data, error } = await supabase
+      .from('shared_links')
+      .select('*')
+      .eq('token', token)
+      .single()
+    
+    if (error) {
+      throw error
+    }
+    
+    if (!data) {
+      return res.status(404).json({ error: 'Shared report not found or has expired.' })
+    }
+    
+    // Check if report has expired
+    const expiryDate = new Date(data.expires_at)
+    if (expiryDate < new Date()) {
+      return res.status(410).json({ error: 'This shared report has expired.' })
+    }
+    
+    // Return the assessment data
+    res.json({
+      assessment: data.assessment_data,
+      expiresAt: data.expires_at
+    })
+  } catch (error) {
+    console.error('Error retrieving shared report:', error)
+    res.status(500).json({ error: 'Failed to retrieve shared report', details: error.message })
+  }
+})
+
 // Helper function for pillar-specific advice
 function getPillarAdvice(pillar) {
   const advice = {
@@ -580,6 +937,132 @@ function getPillarAdvice(pillar) {
   }
   
   return advice[pillar] || 'Review your processes and systems in this area. Look for opportunities to standardize, document, and improve.'
+}
+
+// Helper function to generate PDF buffer
+async function generatePdfBuffer(assessmentData) {
+  return new Promise((resolve, reject) => {
+    try {
+      // Create a new PDF document
+      const doc = new PDFDocument({ size: 'A4', margin: 50 })
+      
+      // Buffer to collect PDF data
+      const buffers = []
+      doc.on('data', buffer => buffers.push(buffer))
+      doc.on('end', () => resolve(Buffer.concat(buffers)))
+      
+      // Use modernized colors 
+      const primaryColor = '#2563eb' // blue-600
+      const secondaryColor = '#1e293b' // slate-800
+      const accentColor = '#475569' // slate-600
+      
+      // Add logo/header
+      doc.fontSize(24).fillColor(primaryColor).text('Financial Health Assessment Report', { align: 'center' })
+      doc.moveDown()
+      
+      // Add date
+      doc.fontSize(12).fillColor(accentColor)
+        .text(`Generated on: ${new Date().toLocaleDateString()}`, { align: 'right' })
+      
+      doc.moveDown(2)
+      
+      // Overall Score Section
+      doc.fontSize(16).fillColor(primaryColor).text('Executive Summary', { underline: true })
+      doc.moveDown()
+      
+      doc.fontSize(12).fillColor(secondaryColor)
+        .text(`Overall Score: ${assessmentData.overallScore}/10`, { align: 'left' })
+      
+      // Add score feedback
+      let scoreFeedback = ''
+      const score = parseFloat(assessmentData.overallScore)
+      
+      if (score >= 8) {
+        scoreFeedback = "Excellent! Your organization has very strong financial health practices across all pillars."
+      } else if (score >= 6) {
+        scoreFeedback = "Good. Your organization has solid financial health with some areas for improvement."
+      } else if (score >= 4) {
+        scoreFeedback = "Average. There are several important areas that need attention to improve your overall financial health."
+      } else if (score >= 2) {
+        scoreFeedback = "Below average. Your organization needs significant improvements in financial management."
+      } else {
+        scoreFeedback = "Critical. Immediate attention is needed to address fundamental financial health issues."
+      }
+      
+      doc.fontSize(12).fillColor(accentColor)
+        .text(scoreFeedback, { align: 'left' })
+      
+      doc.moveDown(2)
+      
+      // Pillar breakdown 
+      doc.fontSize(16).fillColor(primaryColor).text('Pillar Breakdown', { underline: true })
+      doc.moveDown()
+      
+      // Write scores for each pillar
+      assessmentData.pillarResults.forEach((pillar) => {
+        doc.fontSize(14).fillColor(secondaryColor).text(pillar.name, { underline: true })
+        doc.fontSize(12).fillColor(accentColor).text(`Average Score: ${pillar.score}/10`)
+        doc.moveDown(0.5)
+        
+        // Add pillar-specific feedback
+        let pillarFeedback = ''
+        if (pillar.score >= 8) {
+          pillarFeedback = `Your organization demonstrates excellent practices in ${pillar.name.toLowerCase()}.`
+        } else if (pillar.score >= 6) {
+          pillarFeedback = `Your organization has a strong foundation in ${pillar.name.toLowerCase()}, with some opportunities for refinement.`
+        } else if (pillar.score >= 4) {
+          pillarFeedback = `Your organization has a decent foundation in ${pillar.name.toLowerCase()}, but there's significant room for improvement.`
+        } else if (pillar.score >= 2) {
+          pillarFeedback = `Your organization needs to strengthen its approach to ${pillar.name.toLowerCase()}.`
+        } else {
+          pillarFeedback = `Your organization requires significant improvement in ${pillar.name.toLowerCase()}. This should be a priority area.`
+        }
+        
+        doc.fontSize(12).fillColor(accentColor).text(pillarFeedback)
+        doc.moveDown(0.5)
+        
+        // Areas to focus on
+        if (pillar.focusAreas && pillar.focusAreas.length > 0) {
+          doc.fontSize(10).fillColor(secondaryColor).text('Areas to Focus On:')
+          pillar.focusAreas.forEach(area => {
+            doc.fontSize(9).fillColor(accentColor)
+              .text(`• ${area}`)
+          })
+        }
+        
+        doc.moveDown()
+      })
+      
+      doc.moveDown(2)
+      
+      // Recommendations section
+      doc.fontSize(16).fillColor(primaryColor).text('Recommended Actions', { underline: true })
+      doc.moveDown()
+      
+      // Add recommendations
+      if (assessmentData.recommendedActions && assessmentData.recommendedActions.length > 0) {
+        assessmentData.recommendedActions.forEach((action, index) => {
+          doc.fontSize(14).fillColor(secondaryColor).text(`${index + 1}. ${action.title}`, { underline: false })
+          doc.fontSize(10).fillColor(accentColor).text(action.description)
+          doc.moveDown()
+        })
+      }
+      
+      // Footer
+      doc.fontSize(8).fillColor(accentColor)
+        .text(
+          'Organizational Financial Health Assessment System (OFHAS)',
+          50,
+          doc.page.height - 30,
+          { align: 'center' }
+        )
+      
+      // Finalize the PDF
+      doc.end()
+    } catch (error) {
+      reject(error)
+    }
+  })
 }
 
 // Error handling middleware (should be the last middleware)

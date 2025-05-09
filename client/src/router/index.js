@@ -8,8 +8,9 @@ import AdminDashboard from '../views/AdminDashboard.vue'
 import About from '../views/About.vue'
 import ResetPassword from '../views/ResetPassword.vue'
 import EmailConfirmation from '../views/EmailConfirmation.vue'
-import AuthCallback from '../views/AuthCallback.vue'  // Make sure this import exists
+import AuthCallback from '../views/AuthCallback.vue' 
 import NotFound from '../views/NotFound.vue'
+import SharedReportView from '../views/SharedReportView.vue'
 
 const routes = [
   { 
@@ -70,7 +71,12 @@ const routes = [
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
     component: NotFound
-  }
+  },
+  { 
+    path: '/shared-report/:token', 
+    name: 'SharedReportView', 
+    component: SharedReportView 
+  },
 ]
 
 const router = createRouter({

@@ -144,12 +144,21 @@
         <div class="bg-blue-50 rounded-lg shadow-md p-6 flex flex-col md:flex-row items-center justify-between">
           <div class="mb-4 md:mb-0 text-center md:text-left">
             <h3 class="text-lg font-medium text-gray-900 mb-1">Want to share your results?</h3>
-            <p class="text-gray-700">Download your report or schedule a consultation to discuss your results.</p>
+            <p class="text-gray-700">Download your report or share it with colleagues.</p>
           </div>
           
           <div class="flex flex-wrap gap-4 justify-center">
-            <button @click="downloadPDF" class="flex items-center px-5 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
-              <span class="mr-2">📄</span> Download PDF
+            <button @click="downloadPDF" class="flex items-center px-5 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700" :disabled="pdfLoading">
+              <span v-if="pdfLoading" class="flex items-center">
+                <svg class="animate-spin -ml-1 mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Generating...
+              </span>
+              <span v-else>
+                <span class="mr-2">📄</span> Download PDF
+              </span>
             </button>
             <button @click="shareReport" class="flex items-center px-5 py-2 bg-gray-800 text-white rounded-md hover:bg-gray-900">
               <span class="mr-2">📤</span> Share Report
@@ -162,16 +171,36 @@
       </template>
     </div>
   </div>
+  
+  <!-- Share Modal -->
+  <ShareModal 
+    :show="shareModalOpen" 
+    :loading="shareLoading" 
+    :success="shareSuccess" 
+    :error="shareError" 
+    :shareableLink="shareableLink" 
+    :linkCopied="linkCopied"
+    @close="closeShareModal"
+    @share-email="shareViaEmail"
+    @generate-link="generateShareableLink"
+    @copy-link="copyLink"
+  />
 </template>
 
 <script>
 import { ref, computed, onMounted } from 'vue'
 import Chart from 'chart.js/auto'
 import * as AssessmentService from '../services/assessmentService'
+import * as PdfService from '../services/pdfService';
+import * as ShareService from '../services/shareService';
 import supabase from '../supabaseClient'
+import ShareModal from '../components/ShareModal.vue'
 
 export default {
   name: 'Report',
+  components: {
+    ShareModal
+  },
   setup() {
     // Chart refs
     const radarChart = ref(null)
@@ -195,6 +224,26 @@ export default {
     const hasData = computed(() => {
       return Object.keys(rawAnswers.value).length > 0 && rawQuestions.value.length > 0
     })
+    
+    // PDF generation
+    const pdfLoading = ref(false);
+    
+    // Sharing functionality
+    const shareModalOpen = ref(false);
+    const shareMethod = ref('email'); // 'email' or 'link'
+    const shareLoading = ref(false);
+    const shareSuccess = ref(false);
+    const shareError = ref('');
+    
+    // For email sharing
+    const recipientEmail = ref('');
+    const senderName = ref('');
+    const shareMessage = ref('');
+    const includePdf = ref(true);
+    
+    // For link sharing
+    const shareableLink = ref('');
+    const linkCopied = ref(false);
     
     // First, add the new function to assessmentService.js
     // This is just for reference - you'll need to add this to the actual service file
@@ -556,15 +605,146 @@ export default {
       return actions[pillar]
     }
     
+    // PDF generation function
     const downloadPDF = async () => {
-      alert("PDF download functionality would be implemented here. This would generate a detailed report based on your assessment results.")
-      // In production, this would connect to a PDF generation API or service
-    }
-    
+      try {
+        pdfLoading.value = true;
+        
+        // Prepare data for the PDF
+        const pdfData = {
+          pillarResults: pillarResults.value,
+          overallScore: overallScore.value,
+          recommendedActions: recommendedActions.value,
+          // Add any other data needed for the PDF
+        };
+        
+        // Generate and download
+        await PdfService.generateAndDownloadPdf(pdfData);
+      } catch (error) {
+        console.error('Error generating PDF:', error);
+        alert('There was an error generating your PDF. Please try again later.');
+      } finally {
+        pdfLoading.value = false;
+      }
+    };
+
+    // Open the share modal
+    const openShareModal = () => {
+      shareModalOpen.value = true;
+      shareMethod.value = 'email';
+      shareSuccess.value = false;
+      shareError.value = '';
+      recipientEmail.value = '';
+      shareMessage.value = '';
+      includePdf.value = true;
+      shareableLink.value = '';
+      linkCopied.value = false;
+      
+      // Try to prefill sender name from localStorage
+      try {
+        const userProfile = localStorage.getItem('userProfile');
+        if (userProfile) {
+          const profile = JSON.parse(userProfile);
+          senderName.value = `${profile.firstName || ''} ${profile.lastName || ''}`.trim();
+        }
+      } catch (e) {
+        console.error('Error prefilling sender name:', e);
+      }
+    };
+
+    // Close the share modal
+    const closeShareModal = () => {
+      shareModalOpen.value = false;
+    };
+
+    // Share via email
+    const shareViaEmail = async () => {
+      if (!recipientEmail.value) {
+        shareError.value = 'Please enter a recipient email address.';
+        return;
+      }
+      
+      try {
+        shareLoading.value = true;
+        shareError.value = '';
+        
+        // Prepare data for sharing
+        const shareData = {
+          assessmentData: {
+            pillarResults: pillarResults.value,
+            overallScore: overallScore.value,
+            recommendedActions: recommendedActions.value,
+          },
+          recipientEmail: recipientEmail.value,
+          senderName: senderName.value,
+          message: shareMessage.value,
+          includePdf: includePdf.value
+        };
+        
+        // Share via email
+        await ShareService.shareReportByEmail(shareData);
+        
+        // Show success message
+        shareSuccess.value = true;
+      } catch (error) {
+        console.error('Error sharing via email:', error);
+        shareError.value = error.message || 'Failed to share report. Please try again later.';
+      } finally {
+        shareLoading.value = false;
+      }
+    };
+
+    // Generate a shareable link
+    const generateShareableLink = async () => {
+      try {
+        shareLoading.value = true;
+        shareError.value = '';
+        
+        // Prepare data for sharing
+        const shareData = {
+          assessmentData: {
+            pillarResults: pillarResults.value,
+            overallScore: overallScore.value,
+            recommendedActions: recommendedActions.value,
+          }
+        };
+        
+        // Generate link
+        const link = await ShareService.generateShareableLink(shareData);
+        shareableLink.value = link;
+        
+        // Show success message
+        shareSuccess.value = true;
+      } catch (error) {
+        console.error('Error generating shareable link:', error);
+        shareError.value = error.message || 'Failed to generate link. Please try again later.';
+      } finally {
+        shareLoading.value = false;
+      }
+    };
+
+    // Copy link to clipboard
+    const copyLink = async () => {
+      try {
+        const success = await ShareService.copyLinkToClipboard(shareableLink.value);
+        if (success) {
+          linkCopied.value = true;
+          setTimeout(() => {
+            linkCopied.value = false;
+          }, 3000);
+        } else {
+          shareError.value = 'Failed to copy link. Please try copying it manually.';
+        }
+      } catch (error) {
+        console.error('Error copying link:', error);
+        shareError.value = error.message || 'Failed to copy link.';
+      }
+    };
+
+    // Main share function - determines which method to use
     const shareReport = () => {
-      alert("Share functionality would be implemented here. This would allow you to share your report via email or other channels.")
-      // In production, this would integrate with email or social sharing APIs
-    }
+      openShareModal();
+    };
     
     // Load data when component is mounted
     onMounted(() => {
@@ -593,10 +773,31 @@ export default {
       scoreFeedback,
       recommendedActions,
       
+      // PDF functionality
+      pdfLoading,
+      downloadPDF,
+      
+      // Sharing functionality
+      shareModalOpen,
+      shareMethod,
+      shareLoading,
+      shareSuccess,
+      shareError,
+      recipientEmail,
+      senderName,
+      shareMessage,
+      includePdf,
+      shareableLink,
+      linkCopied,
+      openShareModal,
+      closeShareModal,
+      shareViaEmail,
+      generateShareableLink,
+      copyLink,
+      shareReport,
+      
       // Methods
       getPillarFeedback,
-      downloadPDF,
-      shareReport,
       refreshData
     }
   }
