@@ -11,6 +11,7 @@ import EmailConfirmation from '../views/EmailConfirmation.vue'
 import AuthCallback from '../views/AuthCallback.vue' 
 import NotFound from '../views/NotFound.vue'
 import SharedReportView from '../views/SharedReportView.vue'
+import AssessmentHistory from '../views/AssessmentHistory.vue'
 
 const routes = [
   { 
@@ -76,6 +77,12 @@ const routes = [
     path: '/shared-report/:token', 
     name: 'SharedReportView', 
     component: SharedReportView 
+  },
+  {
+    path: '/history',
+    name: 'AssessmentHistory',
+    component: AssessmentHistory,
+    meta: { requiresAuth: true }
   },
 ]
 

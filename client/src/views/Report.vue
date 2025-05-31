@@ -195,6 +195,7 @@ import * as PdfService from '../services/pdfService';
 import * as ShareService from '../services/shareService';
 import supabase from '../supabaseClient'
 import ShareModal from '../components/ShareModal.vue'
+import { useRoute } from 'vue-router'
 
 export default {
   name: 'Report',
@@ -245,40 +246,37 @@ export default {
     const shareableLink = ref('');
     const linkCopied = ref(false);
     
-    // First, add the new function to assessmentService.js
-    // This is just for reference - you'll need to add this to the actual service file
-    const getCompletedAssessmentFromSupabase = async (userId) => {
+    const route = useRoute()
+    
+    // Updated function to fetch assessment by id if present
+    const getAssessmentFromSupabase = async (userId, assessmentId) => {
       if (!userId || !supabase) return null
-      
       try {
-        const { data, error } = await supabase
+        let query = supabase
           .from('assessments')
           .select('*')
           .eq('user_id', userId)
-          .order('completed_at', { ascending: false })
-          .limit(1)
-        
+        if (assessmentId) {
+          query = query.eq('id', assessmentId)
+        }
+        query = query.order('completed_at', { ascending: false }).limit(1)
+        const { data, error } = await query
         if (error) {
           console.error('Error loading assessment from Supabase:', error)
           return null
         }
-        
-        if (data.length === 0) {
+        if (!data || data.length === 0) {
           console.warn('No assessments found in Supabase for user:', userId)
           return null
         }
-        
-        console.log('Loaded assessment from Supabase:', data[0])
         dataSource.value = 'Supabase'
-        
-        // Return the assessment data
         return {
           answers: data[0].answers || {},
           questions: data[0].questions || [],
           completed_at: data[0].completed_at
         }
       } catch (error) {
-        console.error('Error in getCompletedAssessmentFromSupabase:', error)
+        console.error('Error in getAssessmentFromSupabase:', error)
         return null
       }
     }
@@ -287,18 +285,11 @@ export default {
     const calculateResults = async () => {
       console.log("Calculating results...")
       
-      // Try to get assessment data from Supabase first
       let assessmentData = null
       const userId = await AssessmentService.getCurrentUserId()
-      
+      const assessmentId = route.query.id
       if (userId) {
-        console.log("User ID found, attempting to load from Supabase:", userId)
-        // Use the function if it exists in the service, otherwise use our local implementation
-        if (AssessmentService.getCompletedAssessmentFromSupabase) {
-          assessmentData = await AssessmentService.getCompletedAssessmentFromSupabase(userId)
-        } else {
-          assessmentData = await getCompletedAssessmentFromSupabase(userId)
-        }
+        assessmentData = await getAssessmentFromSupabase(userId, assessmentId)
       }
       
       // If not found in Supabase or no user ID, fall back to localStorage
@@ -385,36 +376,31 @@ export default {
       
       const ctx = radarChart.value.getContext('2d')
       radarChartInstance.value = new Chart(ctx, {
-        type: 'radar',
+        type: 'polarArea',
         data: {
           labels,
           datasets: [{
             label: 'Financial Health Score',
             data: scores,
-            backgroundColor: 'rgba(59, 130, 246, 0.2)',
-            borderColor: 'rgba(59, 130, 246, 1)',
-            borderWidth: 2,
-            pointBackgroundColor: 'rgba(59, 130, 246, 1)',
-            pointBorderColor: '#fff',
-            pointHoverBackgroundColor: '#fff',
-            pointHoverBorderColor: 'rgba(59, 130, 246, 1)'
+            backgroundColor: [
+              'rgba(59,130,246,0.7)', // blue
+              'rgba(16,185,129,0.7)', // green
+              'rgba(251,191,36,0.7)', // yellow
+              'rgba(239,68,68,0.7)',  // red
+              'rgba(168,85,247,0.7)', // purple
+              'rgba(34,197,94,0.7)'   // teal
+            ]
           }]
         },
         options: {
-          maintainAspectRatio: true,
           scales: {
             r: {
-              angleLines: {
-                display: true
-              },
               suggestedMin: 0,
               suggestedMax: 10
             }
           },
           plugins: {
-            legend: {
-              display: false
-            }
+            legend: { display: true }
           }
         }
       })

@@ -112,7 +112,7 @@ export const saveProgressToSupabase = async (userId, progress) => {
           answers: progress.answers,
           timestamp: new Date().toISOString()
         }
-      })
+      }, { onConflict: ['user_id'] })
     
     if (error) {
       console.error('Error saving to Supabase:', error)

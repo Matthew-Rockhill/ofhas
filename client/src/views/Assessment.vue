@@ -1,5 +1,8 @@
 <template>
   <div class="min-h-screen bg-gray-50 py-8">
+    <div v-if="!emailConfirmed" class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-6">
+      <strong>Action Required:</strong> Please check your email and confirm your account. You must confirm your email to submit your assessment and view your results.
+    </div>
     <div class="max-w-3xl mx-auto px-4">
       <!-- Progress bar and pillar indicators -->
       <div class="mb-8">
@@ -170,6 +173,29 @@
         <span>{{ savingMessage }}</span>
       </div>
     </div>
+    
+    <!-- Email confirmation modal -->
+    <div v-if="showConfirmModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-20">
+      <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6 text-center">
+        <h3 class="text-lg font-bold mb-4 text-yellow-700">Email Confirmation Required</h3>
+        <p class="mb-4 text-gray-700">You must confirm your email address before submitting your assessment. Please check your inbox for a confirmation email and follow the instructions.</p>
+        <button @click="showConfirmModal = false" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">OK</button>
+      </div>
+    </div>
+    
+    <!-- Resume assessment modal -->
+    <div v-if="showResumeModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-30">
+      <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6 text-center">
+        <h3 class="text-lg font-bold mb-4 text-blue-700">Resume Assessment?</h3>
+        <p class="mb-4 text-gray-700">
+          We found an unfinished assessment. Would you like to resume where you left off, or start a new assessment?
+        </p>
+        <div class="flex justify-center gap-4">
+          <button @click="resumeAssessment" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Resume</button>
+          <button @click="startNewAssessment" class="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300">Start New</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -177,6 +203,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import * as AssessmentService from '../services/assessmentService'
+import supabase from '../supabaseClient'
 
 export default {
   name: 'Assessment',
@@ -196,6 +223,12 @@ export default {
     const savingStatus = ref('') // 'saving', 'saved', or 'error'
     const savingMessage = ref('')
     const notificationTimeout = ref(null)
+    
+    const emailConfirmed = ref(true)
+    const showConfirmModal = ref(false)
+    
+    const showResumeModal = ref(false)
+    let pendingSavedProgress = null
     
     // Computed properties
     const currentQuestion = computed(() => questions.value[currentIndex.value] || null)
@@ -236,44 +269,27 @@ export default {
     // Methods
     const loadQuestions = async () => {
       try {
-        // Get current user ID
         const userId = await AssessmentService.getCurrentUserId()
-        
-        // Get all questions
         const allQuestions = AssessmentService.getAllQuestions()
-        
-        // Check for saved progress from Supabase first (if logged in)
         let savedProgress = null
         if (userId) {
           savedProgress = await AssessmentService.loadProgressFromSupabase(userId)
         }
-        
-        // If no progress in Supabase, check localStorage
         if (!savedProgress) {
           savedProgress = AssessmentService.loadProgressFromLocal()
         }
-        
         if (savedProgress && savedProgress.questions && savedProgress.questions.length > 0) {
-          // Restore from saved progress
-          questions.value = savedProgress.questions
-          currentIndex.value = savedProgress.currentIndex || 0
-          answers.value = savedProgress.answers || {}
-          
-          // Show notification
-          showNotification('saved', 'Restored your previous progress')
+          // Prompt user to resume or start new
+          pendingSavedProgress = savedProgress
+          showResumeModal.value = true
         } else {
-          // Completely randomize all questions
-          questions.value = AssessmentService.shuffleArray(allQuestions)
-          
           // Start fresh
+          questions.value = AssessmentService.shuffleArray(allQuestions)
           currentIndex.value = 0
           answers.value = {}
-          
-          // Save initial state
           saveProgress()
+          loading.value = false
         }
-        
-        loading.value = false
       } catch (error) {
         console.error('Error loading questions:', error)
         loading.value = false
@@ -370,6 +386,10 @@ export default {
     }
     
     const finishAssessment = async () => {
+      if (!emailConfirmed.value) {
+        showConfirmModal.value = true
+        return
+      }
       try {
         showNotification('saving', 'Saving assessment...')
         
@@ -420,35 +440,49 @@ export default {
       }, 30000)
     }
     
-    // Lifecycle hooks
-    onMounted(() => {
+    const resumeAssessment = () => {
+      if (pendingSavedProgress) {
+        questions.value = pendingSavedProgress.questions
+        currentIndex.value = pendingSavedProgress.currentIndex || 0
+        answers.value = pendingSavedProgress.answers || {}
+        showNotification('saved', 'Restored your previous progress')
+      }
+      showResumeModal.value = false
+      loading.value = false
+    }
+    
+    const startNewAssessment = async () => {
+      // Clear progress from Supabase and localStorage
+      const userId = await AssessmentService.getCurrentUserId()
+      if (userId) {
+        await supabase.from('assessment_progress').delete().eq('user_id', userId)
+      }
+      localStorage.removeItem('assessmentProgress')
+      const allQuestions = AssessmentService.getAllQuestions()
+      questions.value = AssessmentService.shuffleArray(allQuestions)
+      currentIndex.value = 0
+      answers.value = {}
+      saveProgress()
+      showResumeModal.value = false
+      loading.value = false
+      showNotification('saved', 'Started a new assessment')
+    }
+    
+    // Check email confirmation status on mount
+    onMounted(async () => {
+      try {
+        const { data } = await supabase.auth.getUser()
+        emailConfirmed.value = data?.user?.email_confirmed_at ? true : false
+      } catch (e) {
+        emailConfirmed.value = true // fallback: allow if error
+      }
       loadQuestions()
-      setupAutosave()
-      
-      // Add beforeunload event listener
-      window.addEventListener('beforeunload', () => {
-        if (Object.keys(answers.value).length > 0) {
-          saveProgress()
-        }
-      })
     })
     
     onBeforeUnmount(() => {
       // Clear interval
       if (autosaveInterval.value) {
         clearInterval(autosaveInterval.value)
-      }
-      
-      // Remove event listener
-      window.removeEventListener('beforeunload', () => {
-        if (Object.keys(answers.value).length > 0) {
-          saveProgress()
-        }
-      })
-      
-      // Clear notification timeout
-      if (notificationTimeout.value) {
-        clearTimeout(notificationTimeout.value)
       }
       
       // Final save
@@ -480,7 +514,12 @@ export default {
       skipQuestion,
       goToQuestion,
       finishAssessment,
-      saveAndExit
+      saveAndExit,
+      emailConfirmed,
+      showConfirmModal,
+      showResumeModal,
+      resumeAssessment,
+      startNewAssessment,
     }
   }
 }

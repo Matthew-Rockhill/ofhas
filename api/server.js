@@ -6,6 +6,7 @@ const { createClient } = require('@supabase/supabase-js')
 const serverless = require('serverless-http')
 const crypto = require('crypto') // Add this for token generation
 const nodemailer = require('nodemailer') // Add this for email sending
+const path = require('path')
 
 require('dotenv').config()
 
@@ -408,6 +409,10 @@ app.get('/api/pdf/:assessmentId', verifyAuth, async (req, res) => {
     const accentColor = '#475569' // slate-600
     
     // Add logo/header
+    const logoPath = path.join(__dirname, 'ofhas_logo.png')
+    doc.image(logoPath, { fit: [120, 60], align: 'center', valign: 'top' })
+    doc.moveDown()
+    
     doc.fontSize(24).fillColor(primaryColor).text('Financial Health Assessment Report', { align: 'center' })
     doc.moveDown()
     
@@ -595,6 +600,10 @@ app.post('/api/pdf', verifyAuth, async (req, res) => {
     const accentColor = '#475569' // slate-600
     
     // Add logo/header
+    const logoPath = path.join(__dirname, 'ofhas_logo.png')
+    doc.image(logoPath, { fit: [120, 60], align: 'center', valign: 'top' })
+    doc.moveDown()
+    
     doc.fontSize(24).fillColor(primaryColor).text('Financial Health Assessment Report', { align: 'center' })
     doc.moveDown()
     
@@ -957,6 +966,10 @@ async function generatePdfBuffer(assessmentData) {
       const accentColor = '#475569' // slate-600
       
       // Add logo/header
+      const logoPath = path.join(__dirname, 'ofhas_logo.png')
+      doc.image(logoPath, { fit: [120, 60], align: 'center', valign: 'top' })
+      doc.moveDown()
+      
       doc.fontSize(24).fillColor(primaryColor).text('Financial Health Assessment Report', { align: 'center' })
       doc.moveDown()
       
